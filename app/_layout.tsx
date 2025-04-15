@@ -5,6 +5,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import * as NavigationBar from 'expo-navigation-bar';
+import { Platform } from 'react-native';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 
@@ -23,6 +25,17 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
+  // Configure Navigation Bar for Android
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+        NavigationBar.setBackgroundColorAsync('rgba(25, 47, 106, 0.0)'); // Set transparent background (similar to tab bar)
+        // Or try fully transparent: NavigationBar.setBackgroundColorAsync('transparent');
+        NavigationBar.setButtonStyleAsync('light'); // Use light buttons on dark background
+        // Optional: Change border color if needed
+        // NavigationBar.setBorderColorAsync('transparent'); 
+    }
+  }, []);
+
   if (!loaded) {
     return null;
   }
@@ -33,7 +46,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
     </ThemeProvider>
   );
 }

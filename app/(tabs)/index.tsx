@@ -1,12 +1,13 @@
-import { Image, StyleSheet, Platform, TextInput, View, Text, ActivityIndicator, SafeAreaView, TouchableOpacity } from 'react-native';
+import { Image, StyleSheet, Platform, TextInput, View, Text, ActivityIndicator, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { OPENWEATHER_API_KEY } from '@env';
 import * as Location from 'expo-location';
-import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
+import { LinearGradient, LinearGradientProps } from 'expo-linear-gradient'; // Import LinearGradient and type
 import Constants from 'expo-constants'; // Import Constants
 import { MaterialCommunityIcons } from '@expo/vector-icons'; // Import icons
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing } from 'react-native-reanimated'; // Import animation hooks
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { HelloWave } from '@/components/HelloWave';
 import ParallaxScrollView from '@/components/ParallaxScrollView';
@@ -55,11 +56,51 @@ const getWeatherIconName = (iconCode: string): string => {
   }
 };
 
+const FAVORITES_KEY = 'weatherAppFavorites';
+const LAST_LOCATION_KEY = 'weatherAppLastLocation'; // Key for last location
+
+// Type for storing last location info
+interface LastLocationInfo {
+  type: 'city' | 'coords';
+  value: string | { lat: number; lon: number };
+}
+
+// Helper function to get gradient colors based on weather icon
+const getGradientColors = (iconCode: string | null | undefined): string[] => {
+  const defaultGradient = ['#4c669f', '#3b5998', '#192f6a']; // Default dark blue
+  if (!iconCode) return defaultGradient;
+
+  const codePrefix = iconCode.substring(0, 2);
+  const timeOfDay = iconCode.endsWith('d') ? 'day' : 'night';
+
+  switch (codePrefix) {
+    case '01': // Clear
+      return timeOfDay === 'day' ? ['#4792FF', '#1E63C7'] : ['#0B1538', '#2C3E50'];
+    case '02': // Partly Cloudy
+      return timeOfDay === 'day' ? ['#5C9DFF', '#2A75E3'] : ['#1A284D', '#3A506B'];
+    case '03': // Cloudy
+    case '04': // Broken Clouds
+      return timeOfDay === 'day' ? ['#8AB8FF', '#5C8FCE'] : ['#43597A', '#6B7F9B'];
+    case '09': // Shower Rain
+    case '10': // Rain
+      return timeOfDay === 'day' ? ['#748BAC', '#4A607F'] : ['#3C4A64', '#5A6F8F'];
+    case '11': // Thunderstorm
+      return ['#485563', '#29323C']; // Dark stormy grey
+    case '13': // Snow
+      return timeOfDay === 'day' ? ['#BCE0FF', '#87BBE3'] : ['#5C7A9A', '#7C9CC2'];
+    case '50': // Mist/Fog
+      return timeOfDay === 'day' ? ['#C9D6FF', '#E2E2E2'] : ['#6B7F9B', '#8A9CB8'];
+    default:
+      return defaultGradient;
+  }
+};
+
 export default function HomeScreen() {
   const [city, setCity] = useState('');
   const [weatherData, setWeatherData] = useState<CurrentWeatherData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
 
   // Animation value
   const iconScale = useSharedValue(1);
@@ -85,10 +126,80 @@ export default function HomeScreen() {
     };
   });
 
+  // Check favorite status when weather data loads
+  useEffect(() => {
+    const checkFavoriteStatus = async () => {
+      if (!weatherData) {
+        setIsFavorite(false); // Reset if no weather data
+        return;
+      }
+      try {
+        const storedFavorites = await AsyncStorage.getItem(FAVORITES_KEY);
+        if (storedFavorites !== null) {
+          const favoritesList: {name: string}[] = JSON.parse(storedFavorites);
+          setIsFavorite(favoritesList.some(fav => fav.name === weatherData.name));
+        } else {
+          setIsFavorite(false);
+        }
+      } catch (e) {
+        console.error("Failed to check favorite status.", e);
+        setIsFavorite(false); // Assume not favorite on error
+      }
+    };
+
+    checkFavoriteStatus();
+  }, [weatherData]); // Re-check whenever weatherData changes
+
+  // Toggle favorite status for the current city
+  const toggleFavorite = async () => {
+    if (!weatherData) return;
+
+    const currentCity = { name: weatherData.name };
+    let updatedFavorites: {name: string}[] = [];
+
+    try {
+      const storedFavorites = await AsyncStorage.getItem(FAVORITES_KEY);
+      if (storedFavorites !== null) {
+        updatedFavorites = JSON.parse(storedFavorites);
+      }
+
+      if (isFavorite) {
+        // Remove from favorites
+        updatedFavorites = updatedFavorites.filter(fav => fav.name !== currentCity.name);
+      } else {
+        // Add to favorites (if not already there - safety check)
+        if (!updatedFavorites.some(fav => fav.name === currentCity.name)) {
+          updatedFavorites.push(currentCity);
+        }
+      }
+
+      await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updatedFavorites));
+      setIsFavorite(!isFavorite); // Update UI state
+
+    } catch (e) {
+      console.error("Failed to toggle favorite.", e);
+      Alert.alert("Error", `Could not ${isFavorite ? 'remove' : 'add'} city ${isFavorite ? 'from' : 'to'} favorites.`);
+    }
+  };
+
+  // Helper to save last location
+  const saveLastLocation = async (info: LastLocationInfo | null) => {
+    try {
+      if (info) {
+        await AsyncStorage.setItem(LAST_LOCATION_KEY, JSON.stringify(info));
+      } else {
+        await AsyncStorage.removeItem(LAST_LOCATION_KEY); // Clear if fetch fails?
+      }
+    } catch (e) {
+      console.error("Failed to save last location.", e);
+    }
+  };
+
   const fetchWeatherDataByCity = async (cityName: string) => {
     setLoading(true);
     setError(null);
     setWeatherData(null);
+    setIsFavorite(false); // Reset favorite state on new search
 
     if (!OPENWEATHER_API_KEY) {
       setError('OpenWeatherMap API key is missing.');
@@ -101,6 +212,7 @@ export default function HomeScreen() {
     try {
       const weatherResponse = await axios.get<CurrentWeatherData>(weatherUrl);
       setWeatherData(weatherResponse.data);
+      await saveLastLocation({ type: 'city', value: cityName }); // Save on success
     } catch (err: any) {
       if (axios.isAxiosError(err) && err.response) {
         if (err.response.status === 404) {
@@ -112,6 +224,7 @@ export default function HomeScreen() {
         setError('An unexpected error occurred while fetching weather.');
       }
       console.error("Error fetching weather data:", err);
+      await saveLastLocation(null); // Clear last location on error?
     } finally {
       setLoading(false);
     }
@@ -121,6 +234,7 @@ export default function HomeScreen() {
     setLoading(true);
     setError(null);
     setWeatherData(null);
+    setIsFavorite(false); // Reset favorite state
 
     if (!OPENWEATHER_API_KEY) {
         setError('OpenWeatherMap API key is missing.');
@@ -133,6 +247,7 @@ export default function HomeScreen() {
     try {
         const weatherResponse = await axios.get<CurrentWeatherData>(weatherUrl);
         setWeatherData(weatherResponse.data);
+        await saveLastLocation({ type: 'coords', value: { lat, lon } }); // Save on success
     } catch (err: any) {
         if (axios.isAxiosError(err) && err.response) {
             setError(`Error fetching location weather: ${err.response.data?.message || 'Unknown error'}`);
@@ -140,6 +255,7 @@ export default function HomeScreen() {
             setError('An unexpected error occurred while fetching location weather.');
         }
         console.error("Error fetching location weather data:", err);
+        await saveLastLocation(null); // Clear last location on error?
     } finally {
         setLoading(false);
     }
@@ -163,12 +279,75 @@ export default function HomeScreen() {
     })();
   }, []);
 
+  // Refactored Initial Load Logic
+  useEffect(() => {
+    const loadInitialWeather = async () => {
+      setLoading(true);
+      let lastLocation: LastLocationInfo | null = null;
+
+      // 1. Try loading last location from storage
+      try {
+        const storedLocation = await AsyncStorage.getItem(LAST_LOCATION_KEY);
+        if (storedLocation) {
+          lastLocation = JSON.parse(storedLocation);
+        }
+      } catch (e) {
+        console.error("Failed to load last location", e);
+      }
+
+      if (lastLocation) {
+        // 2. If last location exists, fetch its weather
+        console.log('Loading weather for last location:', lastLocation);
+        if (lastLocation.type === 'city' && typeof lastLocation.value === 'string') {
+          await fetchWeatherDataByCity(lastLocation.value);
+        } else if (lastLocation.type === 'coords' && typeof lastLocation.value === 'object') {
+          await fetchWeatherDataByCoords(lastLocation.value.lat, lastLocation.value.lon);
+        } else {
+          // Invalid stored data, proceed as if no last location
+          lastLocation = null; 
+        }
+      } 
+      
+      // 3. If NO last location was loaded OR it was invalid, try current location (check permission first)
+      if (!lastLocation) {
+        console.log('No valid last location found, checking current location permissions...');
+        let { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          status = (await Location.requestForegroundPermissionsAsync()).status;
+        }
+
+        if (status === 'granted') {
+          console.log('Permission granted, fetching current location weather...');
+          // Use the logic from handleGetCurrentLocation but don't set loading/error again
+          try {
+            const locationPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Location request timed out.')), 10000));
+            const location = await Promise.race([locationPromise, timeoutPromise]) as Location.LocationObject;
+            await fetchWeatherDataByCoords(location.coords.latitude, location.coords.longitude);
+          } catch (error: any) {
+            setError(`Could not fetch initial location: ${error.message || 'Unknown error'}`);
+            console.error("Error getting initial location:", error);
+            setLoading(false); // Ensure loading stops if initial fetch fails
+          }
+        } else {
+          console.log('Permission denied, cannot fetch current location.');
+          setError('Location permission needed to fetch weather automatically, or search for a city.'); // Inform user
+          setLoading(false); // No weather to load
+        }
+      }
+      // setLoading(false) is handled within the fetch functions called above
+    };
+
+    loadInitialWeather();
+  }, []); // Run only once on mount
+
   const handleGetCurrentLocation = async (showLoading = true) => {
+    // This function now primarily handles the *button press*
     if (showLoading) {
         setLoading(true);
         setError(null);
     }
-
+    // Permission check is important here too in case it was denied initially
     let { status } = await Location.getForegroundPermissionsAsync();
     if (status !== 'granted') {
       let permResponse = await Location.requestForegroundPermissionsAsync();
@@ -177,31 +356,38 @@ export default function HomeScreen() {
           if (showLoading) setLoading(false);
           return;
       }
+      status = permResponse.status; // Update status if granted now
     }
 
-    try {
-        const locationPromise = Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-        });
-
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Location request timed out.')), 10000)
-        );
-
-        const location = await Promise.race([locationPromise, timeoutPromise]) as Location.LocationObject;
-
-        fetchWeatherDataByCoords(location.coords.latitude, location.coords.longitude);
-    } catch (error: any) {
-        setError(`Could not fetch location: ${error.message || 'Unknown error'}`);
-        console.error("Error getting location:", error);
+    // If permission is granted (either initially or just now)
+    if (status === 'granted') {
+        try {
+            const locationPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Location request timed out.')), 10000));
+            const location = await Promise.race([locationPromise, timeoutPromise]) as Location.LocationObject;
+            // Call fetch directly - it handles loading state and saving location
+            await fetchWeatherDataByCoords(location.coords.latitude, location.coords.longitude);
+        } catch (error: any) {
+            setError(`Could not fetch location: ${error.message || 'Unknown error'}`);
+            console.error("Error getting location on button press:", error);
+            // Ensure loading is stopped if fetchWeatherDataByCoords fails somehow before its finally block
+            if (showLoading) setLoading(false);
+        }
+    } else { 
+        // This case should technically be handled by the permission check above,
+        // but added for robustness.
+        setError('Permission to access location was denied.');
         if (showLoading) setLoading(false);
     }
   };
 
+  // Determine current gradient based on weather data
+  const currentGradient = getGradientColors(weatherData?.weather?.[0]?.icon);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient
-        colors={weatherData ? ['#6a8ee0', '#4a6fbe', '#2a4f9c'] : ['#4c669f', '#3b5998', '#192f6a']}
+        colors={currentGradient as unknown as LinearGradientProps['colors']}
         style={styles.gradientContainer}
       >
         <View style={styles.inputContainer}>
@@ -227,18 +413,26 @@ export default function HomeScreen() {
 
         {weatherData && (
           <View style={styles.weatherContainer}>
-             <Text style={styles.locationText}>{weatherData.name}</Text>
-             <Animated.View style={animatedWrapperStyle}>
-                <MaterialCommunityIcons
-                  name={getWeatherIconName(weatherData.weather[0].icon) as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
-                  size={160}
-                  color="#ffffff"
-                  style={styles.weatherIconStyle}
-                />
-             </Animated.View>
-             <Text style={styles.temperatureText}>{Math.round(weatherData.main.temp)}°C</Text>
-             <Text style={styles.descriptionText}>{weatherData.weather[0].description}</Text>
-             <Text style={styles.dateText}>{new Date(weatherData.dt * 1000).toLocaleDateString()}</Text>
+            <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButton}>
+              <MaterialCommunityIcons
+                name={isFavorite ? "heart" : "heart-outline"}
+                size={30}
+                color={isFavorite ? "#ff6b6b" : "#ffffff"}
+              />
+            </TouchableOpacity>
+
+            <Text style={styles.locationText}>{weatherData.name}</Text>
+            <Animated.View style={animatedWrapperStyle}>
+               <MaterialCommunityIcons
+                 name={getWeatherIconName(weatherData.weather[0].icon) as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
+                 size={160}
+                 color="#ffffff"
+                 style={styles.weatherIconStyle}
+               />
+            </Animated.View>
+            <Text style={styles.temperatureText}>{Math.round(weatherData.main.temp)}°C</Text>
+            <Text style={styles.descriptionText}>{weatherData.weather[0].description}</Text>
+            <Text style={styles.dateText}>{new Date(weatherData.dt * 1000).toLocaleDateString()}</Text>
           </View>
         )}
       </LinearGradient>
@@ -307,6 +501,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)', // Slightly adjusted transparency
     borderRadius: 20, // More rounded corners
     width: '95%',
+    position: 'relative', // Needed for absolute positioning of the button
   },
   locationText: {
     fontSize: 32, // Larger font
@@ -342,5 +537,12 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 5,
     width: '90%',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    padding: 5,
+    zIndex: 1, // Ensure it's above other elements
   },
 });
