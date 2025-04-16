@@ -17,6 +17,7 @@
   <hr>
 </div>
 
+
 Welcome to QuickWeather! A fast, modern, and intuitive mobile weather application built using Expo (React Native). Get current weather conditions, search for any city, use your current location, and save your favorite spots.
 
 ## ✨ Key Features
