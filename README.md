@@ -5,6 +5,7 @@
   <p>A sleek and modern weather app built with Expo.</p>
 
 
+
 <!-- Placeholder for a social preview image - You can generate one or create your own -->
 <!-- ![QuickWeather Preview](https://via.placeholder.com/1280x640.png?text=QuickWeather+App) -->
 
