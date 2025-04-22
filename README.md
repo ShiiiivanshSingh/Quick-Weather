@@ -10,7 +10,6 @@
 <!-- <a href="YOUR_APK_DOWNLOAD_LINK_HERE"><img src="https://img.shields.io/badge/Download_APK-Latest_Release-4C6FFF?style=for-the-badge&logo=android&logoColor=white" alt="Download APK"></a> -->
 
   <br>
-
 <!-- Placeholder for GitHub Stars Badge - Update USER/REPO if needed -->
 <!-- <a href="https://github.com/YOUR_USERNAME/YOUR_REPONAME/stargazers"><img src="https://img.shields.io/github/stars/YOUR_USERNAME/YOUR_REPONAME?style=for-the-badge&color=4C6FFF" alt="GitHub stars"></a> -->
   <hr>
