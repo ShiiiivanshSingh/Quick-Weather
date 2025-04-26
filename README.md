@@ -8,6 +8,11 @@
 
 <!-- Placeholder for APK Download Badge - Update link when you have a release -->
 <!-- <a href="YOUR_APK_DOWNLOAD_LINK_HERE"><img src="https://img.shields.io/badge/Download_APK-Latest_Release-4C6FFF?style=for-the-badge&logo=android&logoColor=white" alt="Download APK"></a> -->
+
+### 📥 Download APK
+
+[![⬇️ Download APK](https://img.shields.io/badge/Download_APK-Latest_Release-4C6FFF?style=for-the-badge&logo=android&logoColor=white)](https://expo.dev/artifacts/eas/4YWwsnPYu5V6LwAgzixRAn.apk)
+
 ![226_1x_shots_so](https://github.com/user-attachments/assets/131db5e5-85f2-43ae-8415-5675e02ad1d3)
 
   <br>
